@@ -9,7 +9,7 @@ void setup() {
   // put your setup code here, to run once:
   pinMode(INPUT_PIN, INPUT);
   pinMode(ALTERNATE_3V3, OUTPUT);
-  digitalWrite(ALTERNATE_3V3, HIGH)
+  digitalWrite(ALTERNATE_3V3, HIGH);
 
   Serial.begin(115200);
 
@@ -63,5 +63,5 @@ void loop() {
 
   inputVoltage = analogRead(INPUT_PIN) * 3.3 / (2 << 12);
 
-  Serial.printf("raw= %6.3lf    cali= %6.3lf", inputVoltage, calVoltage);
+  Serial.printf("raw= %6.3lf    cali= %6.3lf\n", inputVoltage, calVoltage);
 }
