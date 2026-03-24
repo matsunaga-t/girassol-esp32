@@ -2,10 +2,15 @@
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 
-#define INPUT_PIN 33
+#define INPUT_PIN 35
+#define ALTERNATE_3V3 25
 
 void setup() {
   // put your setup code here, to run once:
+  pinMode(INPUT_PIN, INPUT);
+  pinMode(ALTERNATE_3V3, OUTPUT);
+  digitalWrite(ALTERNATE_3V3, HIGH)
+
   Serial.begin(115200);
 
   while(!Serial);
