@@ -61,7 +61,7 @@ void loop() {
   // put your main code here, to run repeatedly:
   calVoltage = analogReadMilliVolts(INPUT_PIN) / 1000.0;
 
-  inputVoltage = analogRead(INPUT_PIN) * 3.3 / (2 << 12);
+  inputVoltage = analogRead(INPUT_PIN) * 3.3 / (2 << 11);
 
   Serial.printf("raw= %6.3lf    cali= %6.3lf\n", inputVoltage, calVoltage);
 }

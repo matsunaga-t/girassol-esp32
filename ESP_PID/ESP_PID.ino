@@ -50,9 +50,9 @@
  
 // ------------- Ajuste do limitador da saída para o PWM -----------------
 #define LOWER_CLAMP  0   // (int) Faixa da saída PWM do eixo X
-#define UPPER_CLAMP  2 << 20   // (int) Faixa da saída PWM do eixo Y
+#define UPPER_CLAMP  2 << 19   // (int) Faixa da saída PWM do eixo Y
 
-#define PWM_CENTER   2 << 19      // (int) PWM para centralizar o eixo X
+#define PWM_CENTER   2 << 18      // (int) PWM para centralizar o eixo X
 
 // -------------- Limites do acelerõmetro ------------------------
 #define X_ACCEL_RANGE 2.0    // Faixa de aceleração do eixo X
@@ -69,7 +69,7 @@ double LDR1_mean, LDR2_mean;      // média móvel da entrada
 long PID_output;    // saída do PID
 long old_time = 0, new_time;
 double x_input, y_input;
-float kp, ki, kd;
+double kp, ki, kd;
 
 #if USE_ACCELEROMETER
   // ajustar
