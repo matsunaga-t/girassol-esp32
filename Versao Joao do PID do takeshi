@@ -1,0 +1,261 @@
+#include <arduino.h>
+#include "esp32-hal.h"
+#include "signalConditioning.h"
+#include "controlTheory.h"
+
+// ====================== DEFINIÇÃO DOS PINOS  ==============
+// Pinos dos LDRs
+#define LDR1_PIN   A3     // LDR esquerdo
+#define LDR2_PIN  A2     // LDR direito
+
+// Pinos dos servos
+#define MOTOR_OUT 10     // Saída para motor
+
+// ===================== CONFIGURAÇÕES ADICIONAIS =================
+#define USE_ACCELEROMETER 0   // 1 para usar o acelerômetro
+
+// --------------------- Configurações de controle ----------------------------
+#define CONTROLL_X_AXIS 0     // 1 para controlar o eixo X automaticamente
+#define CONTROLL_Y_AXIS 0     // 1 para controlar o eixo Y automaticamente
+
+#define CHANGE_X_AXIS_GAIN 0  // 1 para usar a entrada para mudar os ganhos do eixo X
+#define CHANGE_Y_AXIS_GAIN 0  // 1 para usar a entrada para mudar os ganhos do eixo Y
+// Use o seguinte guia:
+// CONTROLL_?_AXIS  CHANGE_?_AXIS_GAIN  efeito
+//               0                   0  as entradas controlam a inclinação
+//               0                   1  a placa fica fixa na posição central
+//               1                   0  PID fixo e placa sendo controlada automaticamente
+//               1                   1  controle automatico da placa com PID variável
+
+
+// --------------------- Configurações de impressão ----------------------------
+#define PRINT_INPUT_INFO 1    // Imprime informação da entrada dos potenciometros
+#define PRINT_PID_GAINS  1    // Imprime os ganhos do controlador PID
+#define PRINT_SYSTEM_IO  1    // Imprime a entrada e saída do sistema
+
+// ====================== VALORES AJUSTÁVEIS ===============================================
+#define MOVING_AVERAGE_SAMPLES 5 // (int) Quantidade de amostras para a média móvel
+
+// --------------- Ajuste dos parâmetros do controlador PID -----------------------
+#define GAIN_TYPE 0           // Ganho a ser modificado. 0 para Kp, 1 para Ki e 2 para Kd
+#define X_GAIN_MULT 2         // Multiplicador da entrada do eixo X
+#define Y_GAIN_MULT 2         // Multiplicador da entrada do eixo Y
+
+#define PID_SAMPLE_RATE 100
+#define PID_IN_SECONDS 1
+
+#define P_GAIN 0.267 // 0.266    // (float) Ganho proporcional do eixo X
+#define I_GAIN 0//.0975// 0.0974    // (float) Ganho integral do eixo X
+#define D_GAIN 0//.185// 0.1815 //.0546 //0.277    // (float) Ganho diferencial do eixo X
+ 
+// ------------- Ajuste do limitador da saída para o PWM -----------------
+#define LOWER_CLAMP  0   // (int) Faixa da saída PWM do eixo X
+#define UPPER_CLAMP  2 << 19   // (int) Faixa da saída PWM do eixo Y
+
+#define PWM_CENTER   2 << 18      // (int) PWM para centralizar o eixo X
+
+// -------------- Limites do acelerõmetro ------------------------
+#define X_ACCEL_RANGE 2.0    // Faixa de aceleração do eixo X
+#define X_ACCEL_OFFSET 0.0   // Offset da aceleração do eixo X
+#define Y_ACCEL_RANGE 2.0    // Faixa de aceleração do eixo Y
+#define Y_ACCEL_OFFSET 0.0   // Offset da aceleração do eixo Y
+
+
+// centro pwm = (95, 111)
+
+// definições para o programa
+int16_t LDR1, LDR2;                  // entradas cruas
+double LDR1_mean, LDR2_mean;      // média móvel da entrada
+long PID_output;    // saída do PID
+long old_time = 0, new_time;
+double x_input, y_input;
+double kp, ki, kd;
+
+#if USE_ACCELEROMETER
+  // ajustar
+  Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345);
+#endif
+
+// Inicialização das classes
+MovingAverage x_pos = MovingAverage(MOVING_AVERAGE_SAMPLES, &LDR1, &LDR1_mean);
+MovingAverage y_pos = MovingAverage(MOVING_AVERAGE_SAMPLES, &LDR2, &LDR2_mean);
+
+PIDController pidCon = PIDController(P_GAIN, I_GAIN, D_GAIN, &LDR2_mean, &LDR1_mean, &PID_output, LOWER_CLAMP, UPPER_CLAMP, PWM_CENTER);
+
+
+void setup() {
+  Serial.begin(9600);
+
+  pinMode(MOTOR_OUT, OUTPUT);
+  analogWriteFrequency(MOTOR_OUT, )
+
+  pinMode(LDR1_PIN, INPUT);
+  pinMode(LDR2_PIN, INPUT);
+
+  #if USE_ACCELEROMETER
+    if (!accel.begin()) {
+      Serial.println("Não foi possível encontrar o ADXL345. Verifique as conexões!");
+      while (1);
+    }
+    accel.setRange(ADXL345_RANGE_2_G);
+  #endif
+}
+
+void loop(){
+  new_time = millis();
+
+  
+
+  x_input = analogRead(X_INPUT) / 1024.0;
+  y_input = analogRead(Y_INPUT) / 1024.0;
+
+  #if USE_ACCELEROMETER
+    sensors_event_t event; 
+    accel.getEvent(&event);
+    Serial.print(event.acceleration.x);
+    Serial.print(";");
+    Serial.print(event.acceleration.y);
+    x_pid.change_limit(180 + (event.acceleration.x - X_ACCEL_OFFSET) * X_PWM_RANGE / ((float) X_ACCEL_RANGE), int upper)
+  #endif
+  
+  #if CHANGE_X_AXIS_GAIN
+    x_pid.change_gain(x_input * X_GAIN_MULT, GAIN_TYPE);
+  #endif
+  
+  #if CHANGE_Y_AXIS_GAIN
+    y_pid.change_gain(y_input * Y_GAIN_MULT, GAIN_TYPE);
+  #endif
+
+  // Imprime a entrada do potenciômetro
+  #if PRINT_INPUT_INFO
+    #if CHANGE_X_AXIS_GAIN || CHANGE_Y_AXIS_GAIN
+      Serial.print(GAIN_TYPE);
+    #endif
+
+    Serial.print(" {");
+
+    #if CHANGE_X_AXIS_GAIN
+      Serial.print(x_input* 1024);
+    #else
+      Serial.print((int)(x_input * 255));
+    #endif
+
+    Serial.print(",\t");
+
+    #if CHANGE_Y_AXIS_GAIN
+      Serial.print(y_input * 1024);
+    #else
+      Serial.print((int)(y_input * 255));
+    #endif
+
+    Serial.print("\t}");
+  #endif
+
+  // Ganhos do PID
+  #if PRINT_PID_GAINS
+    x_pid.get_gain(&kp, &ki, &kd);
+    Serial.print(" //");
+    Serial.print(kp);
+    Serial.print(",\t");
+    Serial.print(ki);
+    Serial.print(",\t");
+    Serial.print(kd);
+    Serial.print("/\t");
+
+    y_pid.get_gain(&kp, &ki, &kd);
+    Serial.print(kp);
+    Serial.print(",\t");
+    Serial.print(ki);
+    Serial.print(",\t");
+    Serial.print(kd);
+    Serial.print("\t//");
+  #endif
+
+  // ------------- leitura da tela -----------------
+  if(read_touch()){
+    read_xy(&x, &y);
+    released_time = 0;
+    touch = 1;
+    #if PRINT_SYSTEM_IO
+      // entrada crua
+      Serial.print(" [");
+      Serial.print(x);
+      Serial.print(",\t");
+      Serial.print(y);
+      Serial.print("\t]");
+
+      // entrada média
+      Serial.print("(");
+      Serial.print(LDR1_mean);
+      Serial.print(", ");
+      Serial.print(LDR2_mean);
+      Serial.print("\t)");
+    #endif
+  }
+  else{
+    released_time += new_time - old_time;
+    touch = 0;
+    if (released_time > INACTIVITY_RESET_TIME){
+      reset = 1;
+      released_time = INACTIVITY_RESET_TIME;
+    }
+  }
+  switch((touch << 1) + reset){
+    default:
+      Serial.print(" error");
+    case 0:
+      #if PRINT_SYSTEM_IO
+        Serial.print(" floating (");
+        Serial.print(released_time);
+        Serial.print(")");
+      #endif
+      break;
+    
+    case 1:
+      x_output = X_PWM_CENTER;
+      y_output = Y_PWM_CENTER;
+      #if PRINT_SYSTEM_IO
+        Serial.print(" reset (");
+        Serial.print(released_time);
+        Serial.print(")");
+      #endif
+      break;
+    
+    case 2:
+      x_pos.update();
+      y_pos.update();
+
+      x_pid.update(new_time - old_time);
+      y_pid.update(new_time - old_time);
+      break;
+    
+    case 3:
+      x_pos.initialize();
+      y_pos.initialize();
+
+      x_pid.start(new_time - old_time);
+      y_pid.start(new_time - old_time);
+      reset = 0;
+  }
+
+  #if CONTROLL_X_AXIS
+    analogWrite(X_MOTOR, x_output);
+  #elif CHANGE_X_AXIS_GAIN
+    analogWrite(X_MOTOR, X_PWM_CENTER);
+  #else
+    analogWrite(X_MOTOR, (int)(x_input * 255));
+  #endif
+
+  #if PRINT_SYSTEM_IO
+    // saída pwm
+    Serial.print(" -> [");
+    Serial.print(x_output);
+    Serial.print(", ");
+    Serial.print(y_output);
+    Serial.print("\t]");
+  #endif
+
+  Serial.println();
+  delay(5);
+  old_time = new_time;
+}
