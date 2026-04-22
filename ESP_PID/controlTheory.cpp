@@ -1,88 +1,90 @@
 #include "controlTheory.h"
+#include <esp32-hal.h>
 
-PIDController::PIDController(double Kp, double Ki, double Kd, double *setPoint, double *input, long *output, long lower_bound, long upper_bound, long offset):
+PIDController::PIDController(float Kp, float Ki, float Kd, float *setPoint, float *input, long *output, long lowerBound, long upperBound, long offset):
   Kp(Kp), Ki(Ki), Kd(Kd),
   setPoint(setPoint),
-  lower_bound(lower_bound - offset),
-  upper_bound(upper_bound - offset),
+  lowerBound(lowerBound - offset),
+  upperBound(upperBound - offset),
   offset(offset),
-  old_error(0),
-  new_error(0),
-  cumulative_error(0),
-  oldTime(0), newTime(0),
-  running(false),
-  input(input), output(output),
+  oldTime(millis()),
+  input(input), output(output)
 {
 }
 
 void PIDController::reset(){
-  running = false;
+  this->running = false;
+  this->cumulativeError = 0;
+  this->oldTime = millis();
 }
 
-virtual void PIDController::update(double timeDelta){
-  if(!running){
-    running = true;
-    old_error = new_error = *setPoint - *input;
-    cumulative_error = 0;
+long PIDController::update(){
+  if(!this->running){
+    this->running = true;
+    this->oldError = this->newError = *this->setPoint - *this->input;
   }
   else{
-    old_error = new_error;
-    new_error = *setPoint - *input;
+    this->oldError = this->newError;
+    this->newError = *this->setPoint - *this->input;
   }
-  *output = pid_controll(timeDelta) + offset;
+  newTime = millis();
+  return *this->output = pid_controll() + this->offset;
 }
 
-void PIDController::setGain(double new_gain, int gain_type){
+void PIDController::setGain(float new_gain, int gain_type){
   switch(gain_type){
     case 0: 
-    Kp = new_gain;
+    this->Kp = new_gain;
     break;
     case 1: 
-    Ki = new_gain;
+    this->Ki = new_gain;
     break;
     case 2: 
-    Kd = new_gain;
+    this->Kd = new_gain;
   }
 }
 
-void PIDController::getAllGains(double *Kp, double *Ki, double *Kd){
+void PIDController::getAllGains(float *Kp, float *Ki, float *Kd){
   *Kp = this->Kp;
   *Ki = this->Ki;
   *Kd = this->Kd;
 }
 
-void PIDController::setAllGains(double Kp, double Ki, double Kd){
+void PIDController::setAllGains(float Kp, float Ki, float Kd){
   this->Kp = Kp;
   this->Ki = Ki;
   this->Kd = Kd;
 }
 
 void PIDController::setLimits(int lower, int upper){
-  this->lower_bound = lower - this->offset;
-  this->upper_bound = upper - this->offset;
+  this->lowerBound = lower - this->offset;
+  this->upperBound = upper - this->offset;
 }
 
-int PIDController::pid_controll(double timeDelta){
-  double P_term = new_error * Kp;
+long PIDController::pid_controll(){
+  unsigned long timeDelta = (this->newTime = millis()) - this->oldTime;
+  this->oldTime = this->newTime;
+
+  float P_term = this->newError * this->Kp;
 
   #if TRAPEZOIDAL_INTEGRAL_FOR_CUMULATIVE_ERROR
-    cumulative_error += (new_error + old_error) / 2 * timeDelta;
+    this->cumulativeError += (this->newError + this->oldTime) / 2 * timeDelta;
   #else
-    cumulative_error += new_error * timeDelta;
+    this->cumulativeError += this->newError * timeDelta;
   #endif
-  if (cumulative_error > upper_bound)
-    cumulative_error = upper_bound;
-  else if (cumulative_error < lower_bound)
-    cumulative_error = lower_bound;
+  if (this->cumulativeError > this->upperBound)
+    this->cumulativeError = this->upperBound;
+  else if (this->cumulativeError < this->lowerBound)
+    this->cumulativeError = this->lowerBound;
   
-  double I_term = cumulative_error * Ki;
+  float I_term = this->cumulativeError * this->Ki;
 
-  double D_term = (new_error - old_error) * Kd / timeDelta;
+  float D_term = (this->newError - this->oldError) * this->Kd / timeDelta;
 
   long result = (long)(P_term + I_term + D_term);
-  if (result > upper_bound)
-    result = upper_bound;
-  else if (result < lower_bound)
-    result = lower_bound;
+  if (result > this->upperBound)
+    result = this->upperBound;
+  else if (result < this->lowerBound)
+    result = this->lowerBound;
   return result;
 }

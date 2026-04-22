@@ -40,5 +40,6 @@ void loop() {
     adc4 = 0.424298 * (pow(adc4, 2.22366));
   }
 
-  Serial.printf("adc1=%5.3lf    adc2=%5.3lf    adc3=%5.3lf    adc4=%5.3lf    \n", adc1, adc2, adc3, adc4);
+  double mean = (adc1 + adc2 + adc3 + adc4) / 4;
+  Serial.printf("adc1=% 5.3lf    adc2=% 5.3lf    adc3=% 5.3lf    adc4=% 5.3lf    \n", adc1 - mean, adc2 - mean, adc3 - mean, adc4 - mean);
 }

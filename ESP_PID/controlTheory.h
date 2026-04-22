@@ -5,34 +5,34 @@
 
 class PIDController{
   // parâmetros do PID
-  double Kp, Ki, Kd;
-  double *setPoint;
-  long lower_bound, upper_bound, offset;
+  float Kp, Ki, Kd;
+  float *setPoint;
+  long lowerBound, upperBound, offset;
 
   // variáveis para o sistema
-  double old_error, new_error, cumulative_error;
-  double oldTime, newTime;
-  bool running;
+  float oldError = 0, newError = 0, cumulativeError = 0;
+  unsigned long oldTime, newTime = 0;
+  bool running = false;
 
   // ponteiros para entrada e saída
-  double *input;
+  float *input;
   long *output;
 
   public:
-  PIDController(double Kp, double Ki, double Kd, double *setPoint, double *input, long *output, long lower_bound, long upper_bound, long offset);
+  PIDController(float Kp, float Ki, float Kd, float *setPoint, float *input, long *output, long lowerBound, long upperBound, long offset);
 
   void reset();
-  virtual void update(double timeDelta);
+  long update();
 
-  void setGain(double new_gain, int gain_type);
-  void setAllGains(double Kp, double Ki, double Kd);
+  void setGain(float new_gain, int gain_type);
+  void setAllGains(float Kp, float Ki, float Kd);
 
-  void getAllGains(double *Kp, double *Ki, double *Kd);
+  void getAllGains(float *Kp, float *Ki, float *Kd);
 
   void setLimits(int lower, int upper);
 
   private:
-  int pid_controll(double timeDelta);
+  long pid_controll();
 };
 
 #endif
