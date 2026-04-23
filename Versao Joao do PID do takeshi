@@ -1,261 +1,185 @@
-#include <arduino.h>
+#include <Arduino.h>
 #include "esp32-hal.h"
 #include "signalConditioning.h"
 #include "controlTheory.h"
+#include <WiFi.h>
+#include <HTTPClient.h>
 
-// ====================== DEFINIÇÃO DOS PINOS  ==============
-// Pinos dos LDRs
-#define LDR1_PIN   A3     // LDR esquerdo
-#define LDR2_PIN  A2     // LDR direito
+// ====================== PINOS ======================
+#define LDR1_PIN   39    // A3 — LDR esquerdo (entrada)
+#define LDR2_PIN   34    // A2 — LDR direito  (setpoint)
+#define MOTOR_OUT  10    // PWM para o motor
 
-// Pinos dos servos
-#define MOTOR_OUT 10     // Saída para motor
+// ===================== WI-FI =======================
+const char* ssid     = "pi-dashboard";   // rede criada pelo Raspberry Pi (AP)
+const char* password = "dashboard123";
+const char* serverIP = "http://192.168.4.1:5000/dados";
 
-// ===================== CONFIGURAÇÕES ADICIONAIS =================
-#define USE_ACCELEROMETER 0   // 1 para usar o acelerômetro
+// ============= CONFIGURAÇÕES DE CONTROLE ===========
+#define USE_ACCELEROMETER   0
+#define CONTROLL_AXIS       1   // 1 = PID ativo, 0 = saída manual
+#define CHANGE_GAIN         0   // 1 = entrada muda os ganhos em tempo real
 
-// --------------------- Configurações de controle ----------------------------
-#define CONTROLL_X_AXIS 0     // 1 para controlar o eixo X automaticamente
-#define CONTROLL_Y_AXIS 0     // 1 para controlar o eixo Y automaticamente
+// ============= CONFIGURAÇÕES DE IMPRESSÃO ==========
+#define PRINT_INPUT_INFO    1
+#define PRINT_PID_GAINS     1
+#define PRINT_SYSTEM_IO     1
 
-#define CHANGE_X_AXIS_GAIN 0  // 1 para usar a entrada para mudar os ganhos do eixo X
-#define CHANGE_Y_AXIS_GAIN 0  // 1 para usar a entrada para mudar os ganhos do eixo Y
-// Use o seguinte guia:
-// CONTROLL_?_AXIS  CHANGE_?_AXIS_GAIN  efeito
-//               0                   0  as entradas controlam a inclinação
-//               0                   1  a placa fica fixa na posição central
-//               1                   0  PID fixo e placa sendo controlada automaticamente
-//               1                   1  controle automatico da placa com PID variável
+// ============= PARÂMETROS AJUSTÁVEIS ===============
+#define MOVING_AVERAGE_SAMPLES  5
 
+#define P_GAIN   0.267
+#define I_GAIN   0.0
+#define D_GAIN   0.0
 
-// --------------------- Configurações de impressão ----------------------------
-#define PRINT_INPUT_INFO 1    // Imprime informação da entrada dos potenciometros
-#define PRINT_PID_GAINS  1    // Imprime os ganhos do controlador PID
-#define PRINT_SYSTEM_IO  1    // Imprime a entrada e saída do sistema
+#define PWM_RESOLUTION  20                    // bits
+#define LOWER_CLAMP     0
+#define UPPER_CLAMP     ((1 << PWM_RESOLUTION) - 1)   // 1048575
+#define PWM_CENTER      (1 << (PWM_RESOLUTION - 1))   // 524288
+#define PWM_FREQ        50                    // Hz
 
-// ====================== VALORES AJUSTÁVEIS ===============================================
-#define MOVING_AVERAGE_SAMPLES 5 // (int) Quantidade de amostras para a média móvel
+#define GAIN_TYPE       0     // 0=Kp  1=Ki  2=Kd
+#define GAIN_MULT       2.0
 
-// --------------- Ajuste dos parâmetros do controlador PID -----------------------
-#define GAIN_TYPE 0           // Ganho a ser modificado. 0 para Kp, 1 para Ki e 2 para Kd
-#define X_GAIN_MULT 2         // Multiplicador da entrada do eixo X
-#define Y_GAIN_MULT 2         // Multiplicador da entrada do eixo Y
+#define SEND_INTERVAL_MS  2000   // envia pro Pi a cada 2 s
 
-#define PID_SAMPLE_RATE 100
-#define PID_IN_SECONDS 1
+// ============= VARIÁVEIS GLOBAIS ===================
+double  LDR1_raw, LDR2_raw;          // leituras brutas (0.0–1.0)
+double  LDR1_mean, LDR2_mean;        // após média móvel
+long    PID_output;                   // saída do PID
+double  kp, ki, kd;
 
-#define P_GAIN 0.267 // 0.266    // (float) Ganho proporcional do eixo X
-#define I_GAIN 0//.0975// 0.0974    // (float) Ganho integral do eixo X
-#define D_GAIN 0//.185// 0.1815 //.0546 //0.277    // (float) Ganho diferencial do eixo X
- 
-// ------------- Ajuste do limitador da saída para o PWM -----------------
-#define LOWER_CLAMP  0   // (int) Faixa da saída PWM do eixo X
-#define UPPER_CLAMP  2 << 19   // (int) Faixa da saída PWM do eixo Y
+long    old_time     = 0;
+long    new_time     = 0;
+long    last_send_ms = 0;
 
-#define PWM_CENTER   2 << 18      // (int) PWM para centralizar o eixo X
+// ============= OBJETOS =============================
+MovingAverage ldr1_filter(MOVING_AVERAGE_SAMPLES, &LDR1_raw, &LDR1_mean);
+MovingAverage ldr2_filter(MOVING_AVERAGE_SAMPLES, &LDR2_raw, &LDR2_mean);
 
-// -------------- Limites do acelerõmetro ------------------------
-#define X_ACCEL_RANGE 2.0    // Faixa de aceleração do eixo X
-#define X_ACCEL_OFFSET 0.0   // Offset da aceleração do eixo X
-#define Y_ACCEL_RANGE 2.0    // Faixa de aceleração do eixo Y
-#define Y_ACCEL_OFFSET 0.0   // Offset da aceleração do eixo Y
+// PID: setpoint = LDR2_mean (referência), input = LDR1_mean (posição atual)
+PIDController pidCon(P_GAIN, I_GAIN, D_GAIN,
+                     &LDR2_mean, &LDR1_mean, &PID_output,
+                     LOWER_CLAMP, UPPER_CLAMP, PWM_CENTER);
 
-
-// centro pwm = (95, 111)
-
-// definições para o programa
-int16_t LDR1, LDR2;                  // entradas cruas
-double LDR1_mean, LDR2_mean;      // média móvel da entrada
-long PID_output;    // saída do PID
-long old_time = 0, new_time;
-double x_input, y_input;
-double kp, ki, kd;
-
-#if USE_ACCELEROMETER
-  // ajustar
-  Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345);
-#endif
-
-// Inicialização das classes
-MovingAverage x_pos = MovingAverage(MOVING_AVERAGE_SAMPLES, &LDR1, &LDR1_mean);
-MovingAverage y_pos = MovingAverage(MOVING_AVERAGE_SAMPLES, &LDR2, &LDR2_mean);
-
-PIDController pidCon = PIDController(P_GAIN, I_GAIN, D_GAIN, &LDR2_mean, &LDR1_mean, &PID_output, LOWER_CLAMP, UPPER_CLAMP, PWM_CENTER);
-
-
-void setup() {
-  Serial.begin(9600);
-
-  pinMode(MOTOR_OUT, OUTPUT);
-  analogWriteFrequency(MOTOR_OUT, )
-
-  pinMode(LDR1_PIN, INPUT);
-  pinMode(LDR2_PIN, INPUT);
-
-  #if USE_ACCELEROMETER
-    if (!accel.begin()) {
-      Serial.println("Não foi possível encontrar o ADXL345. Verifique as conexões!");
-      while (1);
-    }
-    accel.setRange(ADXL345_RANGE_2_G);
-  #endif
+// ===================================================
+void conectarWiFi() {
+  WiFi.begin(ssid, password);
+  Serial.print("Conectando ao AP do Pi");
+  int tentativas = 0;
+  while (WiFi.status() != WL_CONNECTED && tentativas < 20) {
+    delay(500);
+    Serial.print(".");
+    tentativas++;
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWi-Fi conectado! IP: " + WiFi.localIP().toString());
+  } else {
+    Serial.println("\nFalha no Wi-Fi — continuando sem envio de dados.");
+  }
 }
 
-void loop(){
+void enviarDados() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  double erro = LDR2_mean - LDR1_mean;
+
+  // JSON com todos os dados do sistema
+  String payload = "{";
+  payload += "\"ldr1_raw\":"   + String(LDR1_raw,   4) + ",";
+  payload += "\"ldr2_raw\":"   + String(LDR2_raw,   4) + ",";
+  payload += "\"ldr1_mean\":"  + String(LDR1_mean,  4) + ",";
+  payload += "\"ldr2_mean\":"  + String(LDR2_mean,  4) + ",";
+  payload += "\"erro\":"       + String(erro,        4) + ",";
+  payload += "\"pid_output\":" + String(PID_output)     + ",";
+  payload += "\"pwm_pct\":"    + String((double)PID_output / UPPER_CLAMP * 100.0, 2);
+  payload += "}";
+
+  HTTPClient http;
+  http.begin(serverIP);
+  http.addHeader("Content-Type", "application/json");
+  int code = http.POST(payload);
+
+  if (code != 200) {
+    Serial.print("[HTTP] erro: ");
+    Serial.println(code);
+  }
+  http.end();
+}
+
+// ===================================================
+void setup() {
+  Serial.begin(115200);
+
+  analogSetAttenuation(ADC_11db);          // escala completa 0–3.3V no ESP32
+  analogWriteResolution(PWM_RESOLUTION);
+  analogWriteFrequency(MOTOR_OUT, PWM_FREQ);
+  pinMode(MOTOR_OUT, OUTPUT);
+  pinMode(LDR1_PIN,  INPUT);
+  pinMode(LDR2_PIN,  INPUT);
+
+  // Leitura inicial para pré-aquecer os filtros
+  LDR1_raw = analogReadMilliVolts(LDR1_PIN) / 3300.0;
+  LDR2_raw = analogReadMilliVolts(LDR2_PIN) / 3300.0;
+  ldr1_filter.update();
+  ldr2_filter.update();
+
+  conectarWiFi();
+
+  old_time = millis();
+  Serial.println("Setup concluído.");
+}
+
+// ===================================================
+void loop() {
   new_time = millis();
+  double dt = (new_time - old_time) / 1000.0;   // delta em segundos
+  if (dt <= 0) dt = 0.001;
 
-  
+  // 1. Leitura dos LDRs em volts normalizados (0.0–1.0)
+  LDR1_raw = analogReadMilliVolts(LDR1_PIN) / 3300.0;
+  LDR2_raw = analogReadMilliVolts(LDR2_PIN) / 3300.0;
 
-  x_input = analogRead(X_INPUT) / 1024.0;
-  y_input = analogRead(Y_INPUT) / 1024.0;
+  // 2. Filtro de média móvel
+  ldr1_filter.update();
+  ldr2_filter.update();
 
-  #if USE_ACCELEROMETER
-    sensors_event_t event; 
-    accel.getEvent(&event);
-    Serial.print(event.acceleration.x);
-    Serial.print(";");
-    Serial.print(event.acceleration.y);
-    x_pid.change_limit(180 + (event.acceleration.x - X_ACCEL_OFFSET) * X_PWM_RANGE / ((float) X_ACCEL_RANGE), int upper)
-  #endif
-  
-  #if CHANGE_X_AXIS_GAIN
-    x_pid.change_gain(x_input * X_GAIN_MULT, GAIN_TYPE);
-  #endif
-  
-  #if CHANGE_Y_AXIS_GAIN
-    y_pid.change_gain(y_input * Y_GAIN_MULT, GAIN_TYPE);
+  // 3. Ajuste de ganho em tempo real (opcional)
+  #if CHANGE_GAIN
+    pidCon.setGain(LDR1_raw * GAIN_MULT, GAIN_TYPE);
   #endif
 
-  // Imprime a entrada do potenciômetro
-  #if PRINT_INPUT_INFO
-    #if CHANGE_X_AXIS_GAIN || CHANGE_Y_AXIS_GAIN
-      Serial.print(GAIN_TYPE);
-    #endif
-
-    Serial.print(" {");
-
-    #if CHANGE_X_AXIS_GAIN
-      Serial.print(x_input* 1024);
-    #else
-      Serial.print((int)(x_input * 255));
-    #endif
-
-    Serial.print(",\t");
-
-    #if CHANGE_Y_AXIS_GAIN
-      Serial.print(y_input * 1024);
-    #else
-      Serial.print((int)(y_input * 255));
-    #endif
-
-    Serial.print("\t}");
-  #endif
-
-  // Ganhos do PID
-  #if PRINT_PID_GAINS
-    x_pid.get_gain(&kp, &ki, &kd);
-    Serial.print(" //");
-    Serial.print(kp);
-    Serial.print(",\t");
-    Serial.print(ki);
-    Serial.print(",\t");
-    Serial.print(kd);
-    Serial.print("/\t");
-
-    y_pid.get_gain(&kp, &ki, &kd);
-    Serial.print(kp);
-    Serial.print(",\t");
-    Serial.print(ki);
-    Serial.print(",\t");
-    Serial.print(kd);
-    Serial.print("\t//");
-  #endif
-
-  // ------------- leitura da tela -----------------
-  if(read_touch()){
-    read_xy(&x, &y);
-    released_time = 0;
-    touch = 1;
-    #if PRINT_SYSTEM_IO
-      // entrada crua
-      Serial.print(" [");
-      Serial.print(x);
-      Serial.print(",\t");
-      Serial.print(y);
-      Serial.print("\t]");
-
-      // entrada média
-      Serial.print("(");
-      Serial.print(LDR1_mean);
-      Serial.print(", ");
-      Serial.print(LDR2_mean);
-      Serial.print("\t)");
-    #endif
-  }
-  else{
-    released_time += new_time - old_time;
-    touch = 0;
-    if (released_time > INACTIVITY_RESET_TIME){
-      reset = 1;
-      released_time = INACTIVITY_RESET_TIME;
-    }
-  }
-  switch((touch << 1) + reset){
-    default:
-      Serial.print(" error");
-    case 0:
-      #if PRINT_SYSTEM_IO
-        Serial.print(" floating (");
-        Serial.print(released_time);
-        Serial.print(")");
-      #endif
-      break;
-    
-    case 1:
-      x_output = X_PWM_CENTER;
-      y_output = Y_PWM_CENTER;
-      #if PRINT_SYSTEM_IO
-        Serial.print(" reset (");
-        Serial.print(released_time);
-        Serial.print(")");
-      #endif
-      break;
-    
-    case 2:
-      x_pos.update();
-      y_pos.update();
-
-      x_pid.update(new_time - old_time);
-      y_pid.update(new_time - old_time);
-      break;
-    
-    case 3:
-      x_pos.initialize();
-      y_pos.initialize();
-
-      x_pid.start(new_time - old_time);
-      y_pid.start(new_time - old_time);
-      reset = 0;
-  }
-
-  #if CONTROLL_X_AXIS
-    analogWrite(X_MOTOR, x_output);
-  #elif CHANGE_X_AXIS_GAIN
-    analogWrite(X_MOTOR, X_PWM_CENTER);
+  // 4. Atualiza o PID
+  #if CONTROLL_AXIS
+    pidCon.update(dt);
+    analogWrite(MOTOR_OUT, (int)PID_output);
   #else
-    analogWrite(X_MOTOR, (int)(x_input * 255));
+    // modo manual: motor segue LDR1 diretamente
+    analogWrite(MOTOR_OUT, (int)(LDR1_raw * UPPER_CLAMP));
   #endif
 
+  // 5. Debug serial
+  #if PRINT_INPUT_INFO
+    Serial.printf("LDR1_raw=%.3f  LDR2_raw=%.3f  ", LDR1_raw, LDR2_raw);
+    Serial.printf("mean1=%.3f  mean2=%.3f  ", LDR1_mean, LDR2_mean);
+  #endif
+  #if PRINT_PID_GAINS
+    pidCon.getAllGains(&kp, &ki, &kd);
+    Serial.printf("Kp=%.3f Ki=%.3f Kd=%.3f  ", kp, ki, kd);
+  #endif
   #if PRINT_SYSTEM_IO
-    // saída pwm
-    Serial.print(" -> [");
-    Serial.print(x_output);
-    Serial.print(", ");
-    Serial.print(y_output);
-    Serial.print("\t]");
+    Serial.printf("erro=%.3f  PID=%ld  PWM=%.1f%%",
+      LDR2_mean - LDR1_mean, PID_output,
+      (double)PID_output / UPPER_CLAMP * 100.0);
   #endif
-
   Serial.println();
-  delay(5);
+
+  // 6. Envia para o Raspberry Pi a cada SEND_INTERVAL_MS
+  if (new_time - last_send_ms >= SEND_INTERVAL_MS) {
+    enviarDados();
+    last_send_ms = new_time;
+  }
+
   old_time = new_time;
+  delay(5);
 }
