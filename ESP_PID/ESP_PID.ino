@@ -4,6 +4,8 @@
 #include "esp32-hal.h"
 #include "signalConditioning.h"
 #include "controlTheory.h"
+#include <HTTPClient.h>
+#include <WiFi.h>
 
 // ======================= DEFINIÇÃO DOS PINOS  ==============
 // ============ NÃO MUDAR SEM MOTIVO ========================
@@ -20,6 +22,8 @@
 // Pinos de entrada
 #define INPUT1_PIN         32
 #define INPUT2_PIN         33
+#define INPUT3_PIN         35
+#define HALT_PIN           26
 
 // ======================= CONFIGURAÇÕES ADICIONAIS =================
 // LDR esquerdo
@@ -35,7 +39,11 @@
 #define RIGHT_LDR2         3      
 
 // ----------------------- Configurações do wifi ------------------------
-#define USE_WIFI           0      // 1 para enviar dados para o servidor
+#define USE_WIFI           1      // 1 para enviar dados para o servidor
+
+const char* ssid     = "pi-dashboard";   // rede criada pelo Raspberry Pi (AP)
+const char* password = "dashboard123";
+const char* serverIP = "http://192.168.4.1:5000/dados";
 
 // ----------------------- Configurações do condicionamento de sinais ----------------
 #define MOVING_AVERAGE_SAMPLES 5  // (int) Quantidade de amostras para a média móvel
@@ -73,7 +81,7 @@
 
   // ........................... Ajuste dos parâmetros do controlador PID ............................
   #define GAIN_TYPE              0             // Ganho a ser modificado. 0 para Kp, 1 para Ki e 2 para Kd
-  #define GAIN_MULT              2             // Multiplicador do ganho na entrada
+  #define GAIN_MULT              0.5f          // Multiplicador do ganho na entrada
 
 // --------------------------- Configurações do acelerômetro ---------------------------------------
 #define USE_ACCELEROMETER      0           // 1 para usar o acelerômetro
@@ -127,8 +135,10 @@ long PID_output;                         // saída do PID
 Servo motor;
 #if CHANGE_PID_GAIN
   float kp, ki, kd;                      // Ganhos do PID
+  float input1;
+  float input2;
+  float input3;
 #endif
-float input1;
 bool running = false;
 
 #if USE_ACCELEROMETER
@@ -138,6 +148,50 @@ bool running = false;
 
 PIDController pidCon = PIDController(P_GAIN, I_GAIN, D_GAIN, &leftE, &rightE, &PID_output, LOWER_CLAMP, UPPER_CLAMP, PWM_CENTER);
 
+
+void conectarWiFi() {
+  WiFi.begin(ssid, password);
+  Serial.print("Conectando ao AP do Pi");
+  int tentativas = 0;
+  while (WiFi.status() != WL_CONNECTED && tentativas < 20) {
+    delay(500);
+    Serial.print(".");
+    tentativas++;
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWi-Fi conectado! IP: " + WiFi.localIP().toString());
+  } else {
+    Serial.println("\nFalha no Wi-Fi — continuando sem envio de dados.");
+  }
+}
+
+void enviarDados() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  // JSON com todos os dados do sistema
+  String payload = "{";
+  payload += "\"ldr1_raw\":"          + String(leftLDR_raw / 1000.0f,  4)    + ",";
+  payload += "\"ldr2_raw\":"          + String(rightLDR_raw / 1000.0f, 4)    + ",";
+  payload += "\"ldr1_mean\":"         + String(leftLDR_ma.getValue(),  4)    + ",";
+  payload += "\"ldr2_mean\":"         + String(rightLDR_ma.getValue(), 4)    + ",";
+  payload += "\"ldr1_illuminance\":"  + String(leftE,   4)                   + ",";
+  payload += "\"ldr2_illuminance\":"  + String(rightE,  4)                   + ",";
+  payload += "\"erro\":"              + String(leftE - rightE,  4)           + ",";
+  payload += "\"pid_output\":"        + String(PID_output)                   + ",";
+  payload += "\"pwm_pct\":"           + String( (PID_output - PWM_CENTER) / (UPPER_CLAMP - LOWER_CLAMP) * 2 * 100 , 2);
+  payload += "}";
+
+  HTTPClient http;
+  http.begin(serverIP);
+  http.addHeader("Content-Type", "application/json");
+  int code = http.POST(payload);
+
+  if (code != 200) {
+    Serial.print("[HTTP] erro: ");
+    Serial.println(code);
+  }
+  http.end();
+}
 
 void setup() {
   Serial.begin(9600);
@@ -162,8 +216,16 @@ void setup() {
     accel.setRange(ADXL345_RANGE_2_G);
   #endif
 
-  pinMode(INPUT1_PIN, INPUT);
-  pinMode(INPUT2_PIN, INPUT_PULLDOWN);
+  #if CHANGE_PID_GAIN
+    pinMode(INPUT1_PIN, INPUT);
+    pinMode(INPUT2_PIN, INPUT);
+    pinMode(INPUT3_PIN, INPUT);
+    pinMode(HALT_PIN, INPUT_PULLDOWN);
+  #endif
+
+  #if USE_WIFI
+    conectarWiFi();
+  #endif
 }
 
 void loop(){
@@ -172,17 +234,19 @@ void loop(){
     accel.getEvent(&event);
   #endif
 
-  input1 = (analogReadMilliVolts(INPUT1_PIN) - 142) / (3165.0 - 142.0);
-  running = running ^ digitalRead(INPUT2_PIN);
+  running = running ^ digitalRead(HALT_PIN);
   #if CHANGE_PID_GAIN
-    pidCon.setGain(input1 * GAIN_MULT, GAIN_TYPE);
+    input1 = (analogReadMilliVolts(INPUT1_PIN) - 142) / (3165.0 - 142.0);
+    input2 = (analogReadMilliVolts(INPUT2_PIN) - 142) / (3165.0 - 142.0);
+    input3 = (analogReadMilliVolts(INPUT3_PIN) - 142) / (3165.0 - 142.0);
+
+    pidCon.setAllGains(input1 * GAIN_MULT, input2 * GAIN_MULT, input3 * GAIN_MULT);
   #endif
 
   // Imprime a entrada do potenciômetro
   #if PRINT_INPUT_INFO
     #if CHANGE_PID_GAIN
-      Serial.print(GAIN_TYPE);
-      Serial.printf(" [%5.3f] ", input1);
+      Serial.printf("[%5.3f, %5.3f, %5.3f] ", input1, input2, input3);
     #endif
     Serial.printf("%s  ", running ? "RUNNING" : "HALTED ");
   #endif
@@ -218,5 +282,8 @@ void loop(){
       std::logf(leftE), std::logf(rightE), PID_output);
   #endif
   Serial.println();
+  #if USE_WIFI
+    enviarDados();
+  #endif
   delay(PID_SAMPLE_RATE);
 }
