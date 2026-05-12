@@ -6,6 +6,7 @@
 #include "controlTheory.h"
 #include <HTTPClient.h>
 #include <WiFi.h>
+#include <Adafruit_MPU6050.h>
 
 // ======================= DEFINIÇÃO DOS PINOS  ==============
 // ============ NÃO MUDAR SEM MOTIVO ========================
@@ -71,7 +72,7 @@ const char* serverIP = "http://192.168.4.1:5000/dados";
   #define PWM_CENTER           1500       // (int) Valor central do PWM 
 
   // ......................... Ajuste do controlador PID ..............................................
-  #define PID_SAMPLE_RATE      10        // (int) Intervalo de tempo, em ms, entre atualizações no PID
+  #define PID_CONTROLL_DELAY   10         // (int) Intervalo de tempo, em ms, entre atualizações no PID
 
   #define P_GAIN               0.120      // (float) Ganho proporcional do PID
   #define I_GAIN               0//.0975   // (float) Ganho integral do PID
@@ -102,36 +103,40 @@ const char* serverIP = "http://192.168.4.1:5000/dados";
 
 #define XTABLE_LDR \
   /*      pino      numero físisco    entrada crua    classe ma      classe norm        média      iluminância   ilum total*/ \
-  X( LEFT_LDR_PIN,     LEFT_LDR,      leftLDR_raw,    leftLDR_ma,    leftLDR_norm,   leftLDR_mean,  leftLDR_E,      leftE) \
-  X(RIGHT_LDR_PIN,    RIGHT_LDR,     rightLDR_raw,   rightLDR_ma,   rightLDR_norm,  rightLDR_mean, rightLDR_E,     rightE) \
+  X( LEFT_LDR_PIN,     LEFT_LDR,      leftLDR_raw,    leftLDR_ms,    leftLDR_norm,   leftLDR_mean,  leftLDR_E,      leftE) \
+  X(RIGHT_LDR_PIN,    RIGHT_LDR,     rightLDR_raw,   rightLDR_ms,   rightLDR_norm,  rightLDR_mean, rightLDR_E,     rightE) \
   XTABLE_LDR_SECONDARY
 
 #if USE_SECONDARY_LDR
   #define XTABLE_LDR_SECONDARY \
-    X2( LEFT_LDR2_PIN,  LEFT_LDR2,  leftLDR2_raw,  leftLDR2_ma,  leftLDR2_norm,  leftLDR2_mean,  leftLDR2_E,   leftE) \
-    X2(RIGHT_LDR2_PIN, RIGHT_LDR2, rightLDR2_raw, rightLDR2_ma, rightLDR2_norm, rightLDR2_mean, rightLDR2_E,  rightE)
+    X2( LEFT_LDR2_PIN,  LEFT_LDR2,  leftLDR2_raw,  leftLDR2_ms,  leftLDR2_norm,  leftLDR2_mean,  leftLDR2_E,   leftE) \
+    X2(RIGHT_LDR2_PIN, RIGHT_LDR2, rightLDR2_raw, rightLDR2_ms, rightLDR2_norm, rightLDR2_mean, rightLDR2_E,  rightE)
 #else
   #define XTABLE_LDR_SECONDARY
 #endif
 
-// key: X(LDR_pin, LDR_number, LDR_raw, LDR_ma, LDR_norm, LDR_mean, LDR_E, total_E)
+// key: X(LDR_pin, LDR_number, LDR_raw, LDR_ms, LDR_norm, LDR_mean, LDR_E, total_E)
 
 // ============================================================================================
 
+
+
 // definições para o programa
 #define X2 X
-#define X(LDR_pin, LDR_number, LDR_raw, LDR_ma, LDR_norm, LDR_mean, LDR_E, total_E) \
+#define X(LDR_pin, LDR_number, LDR_raw, LDR_ms, LDR_norm, LDR_mean, LDR_E, total_E) \
   uint32_t LDR_raw;   \
   float    LDR_E;  \
   /* inicialização das classes */  \
-  MovingAverage LDR_ma   = MovingAverage(MOVING_AVERAGE_SAMPLES);  \
-  LDRNormalizer LDR_norm = LDRNormalizer(LDR_PARAMS(LDR_number));
+  MultisampleManager LDR_ms;  \
+  LDRNormalizer LDR_norm(LDR_PARAMS(LDR_number));
 XTABLE_LDR
 #undef X
 #undef X2
 
 float leftE, rightE;                     // Iluminância dos LDRs
 long PID_output;                         // saída do PID
+long long nextControllTime_us = PID_CONTROLL_DELAY * 1000;
+
 Servo motor;
 #if CHANGE_PID_GAIN
   float kp, ki, kd;                      // Ganhos do PID
@@ -142,8 +147,7 @@ Servo motor;
 bool running = false;
 
 #if USE_ACCELEROMETER
-  // ajustar
-  Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345);
+  Adafruit_MPU6050 mpuSensor;
 #endif
 
 PIDController pidCon = PIDController(P_GAIN, I_GAIN, D_GAIN, &leftE, &rightE, &PID_output, LOWER_CLAMP, UPPER_CLAMP, PWM_CENTER);
@@ -172,8 +176,8 @@ void enviarDados() {
   String payload = "{";
   payload += "\"ldr1_raw\":"          + String(leftLDR_raw / 1000.0f,  4)    + ",";
   payload += "\"ldr2_raw\":"          + String(rightLDR_raw / 1000.0f, 4)    + ",";
-  payload += "\"ldr1_mean\":"         + String(leftLDR_ma.getValue(),  4)    + ",";
-  payload += "\"ldr2_mean\":"         + String(rightLDR_ma.getValue(), 4)    + ",";
+  payload += "\"ldr1_mean\":"         + String(leftLDR_ms.getAverage(),  4)    + ",";
+  payload += "\"ldr2_mean\":"         + String(rightLDR_ms.getAverage(), 4)    + ",";
   payload += "\"ldr1_illuminance\":"  + String(leftE,   4)                   + ",";
   payload += "\"ldr2_illuminance\":"  + String(rightE,  4)                   + ",";
   payload += "\"erro\":"              + String(leftE - rightE,  4)           + ",";
@@ -209,11 +213,11 @@ void setup() {
   #undef X2
 
   #if USE_ACCELEROMETER
-    if (!accel.begin()) {
+    if (!mpuSensor.begin()) {
       Serial.println("Não foi possível encontrar o ADXL345. Verifique as conexões!");
       while (1);
     }
-    accel.setRange(ADXL345_RANGE_2_G);
+    mpuSensor.setAccelerometerRange(MPU6050_RANGE_2_G);
   #endif
 
   #if CHANGE_PID_GAIN
@@ -230,8 +234,11 @@ void setup() {
 
 void loop(){
   #if USE_ACCELEROMETER
-    sensors_event_t event; 
-    accel.getEvent(&event);
+    sensors_event_t accelarationEvent; 
+    sensors_event_t gyroEvent;
+    sensors_event_t temperatureEvent;
+    mpuSensor.getEvent(&accelarationEvent, &gyroEvent, &temperatureEvent);
+    Serial.printf("%f, %f, %f ", accelerationEvent.acceleration.x, accelerationEvent.acceleration.y, accelerationEvent.acceleration.z);
   #endif
 
   running = running ^ digitalRead(HALT_PIN);
@@ -256,19 +263,41 @@ void loop(){
     pidCon.getAllGains(&kp, &ki, &kd);
     Serial.printf("PID = {%5.3f, %5.3f, %5.3f}  ", kp, ki, kd);
   #endif
-
+  /* Original
   leftE = rightE = 0.0f;
   #define X2 X
-  #define X(LDR_pin, LDR_number, LDR_raw, LDR_ma, LDR_norm, LDR_mean, LDR_E, total_E) \
+  #define X(LDR_pin, LDR_number, LDR_raw, LDR_ms, LDR_norm, LDR_mean, LDR_E, total_E) \
     LDR_raw = analogReadMilliVolts(LDR_pin);  \
-    LDR_ma.update(LDR_raw / 1000.0f);  \
-    LDR_E = LDR_norm.toIlluminance(LDR_ma.getValue());  \
+    LDR_ms.addSample(LDR_raw / 1000.0f);  \
+    LDR_E = LDR_norm.toIlluminance(LDR_ms.getAverage());  \
     total_E += LDR_E;
   XTABLE_LDR
   #undef X
   #undef X2
-  
   PID_output = pidCon.update();
+  */
+
+  #define X2 X
+  #define X(LDR_pin, LDR_number, LDR_raw, LDR_ms, LDR_norm, LDR_mean, LDR_E, total_E) \
+    LDR_raw = analogReadMilliVolts(LDR_pin);  \
+    LDR_ms.addSample(LDR_raw / 1000.0f);
+  XTABLE_LDR
+  #undef X
+  #undef X2
+  if(esp_timer_get_time() > nextControllTime_us){
+    nextControllTime_us += PID_CONTROLL_DELAY * 1000;
+    leftE = rightE = 0.0f;
+    #define X2 X
+    #define X(LDR_pin, LDR_number, LDR_raw, LDR_ms, LDR_norm, LDR_mean, LDR_E, total_E) \
+      LDR_E = LDR_norm.toIlluminance(LDR_ms.getAverage());  \
+      total_E += LDR_E; \
+      LDR_ms.reset();
+    XTABLE_LDR
+    #undef X
+    #undef X2
+    PID_output = pidCon.update();
+  }
+
   if(running)
     motor.write(PID_output);
   else
@@ -277,7 +306,7 @@ void loop(){
   #if PRINT_SYSTEM_IO
     Serial.printf("raw = (%4d, %4d)  ma = (%5.2f, %5.2f)  E = (%7.0f, %7.0f)  ln(E) = (%5.2f, %5.2f) -> %d",
       leftLDR_raw, rightLDR_raw,
-      leftLDR_ma.getValue(), rightLDR_ma.getValue(), 
+      leftLDR_ms.getAverage(), rightLDR_ms.getAverage(), 
       leftE, rightE,
       std::logf(leftE), std::logf(rightE), PID_output);
   #endif
@@ -285,5 +314,4 @@ void loop(){
   #if USE_WIFI
     enviarDados();
   #endif
-  delay(PID_SAMPLE_RATE);
 }

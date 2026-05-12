@@ -24,6 +24,17 @@ class MovingAverage{
   float justUpdate(float input);
 };
 
+class MultisampleManager{
+  long samples = 0;
+  float sum = 0.0f;
+
+  public:
+  void addSample(float value);
+  float getAverage();
+  void reset();
+};
+
+
 class LDRNormalizer{
   /*  Um LDR é caracterizado por uma curva `R = b * E^a`, onde `R` é a resistência, `E` é a iluminância sobre o sensor e `a` e `b` são duas constantes
    * próprias de cada LDR.

@@ -36,6 +36,21 @@ float MovingAverage::justUpdate(float input){
 }
 
 
+void MultisampleManager::addSample(float value){
+  this->sum += value;
+}
+
+float MultisampleManager::getAverage(){
+  if(!this->samples)
+    return 0.0f;
+  return this->sum / this->samples;
+}
+
+void MultisampleManager::reset(){
+  this->sum = 0.0f;
+  this->samples = 0;
+}
+
 LDRNormalizer::LDRNormalizer():
   alpha(0),
   beta(0)
