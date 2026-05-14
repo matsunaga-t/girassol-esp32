@@ -6,6 +6,7 @@
 #include "controlTheory.h"
 #include <HTTPClient.h>
 #include <WiFi.h>
+#include <PubSubClient.h>
 
 /* Third party libraries */
 #include <ESP32Servo.h>
@@ -20,12 +21,15 @@
 #define X(LDR_pin, LDR_number, LDR_raw, LDR_ms, LDR_norm, LDR_mean, LDR_E, total_E) \
     uint32_t LDR_raw;   \
     float    LDR_E;  \
+    float    LDR_mean; \
     /* inicialização das classes */  \
     MultisampleManager LDR_ms;  \
     LDRNormalizer LDR_norm(LDR_PARAMS(LDR_number));
 XTABLE_LDR
 #undef X
 #undef X2
+
+MultisampleManager solarPanel_ms;
 
 float leftE, rightE;                     // Iluminância dos LDRs
 long PID_output;                         // saída do PID
@@ -49,9 +53,11 @@ Servo motor;
 
 PIDController pidCon = PIDController(P_GAIN, I_GAIN, D_GAIN, &leftE, &rightE, &PID_output, LOWER_CLAMP, UPPER_CLAMP, PWM_CENTER);
 
+WiFiClient   wifiClient;
+PubSubClient mqtt(wifiClient);
 
 void conectarWiFi() {
-    WiFi.begin(ssid, password);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     Serial.print("Conectando ao AP do Pi");
     int tentativas = 0;
     while (WiFi.status() != WL_CONNECTED && tentativas < 20) {
@@ -94,6 +100,72 @@ void enviarDados() {
     http.end();
 }
 
+void conectarMQTT() {
+  while (!mqtt.connected()) {
+    Serial.print("MQTT...");
+    if (mqtt.connect(MQTT_CLIENT)) {
+      Serial.println("OK");
+      mqtt.subscribe(TOPIC_CONFIG);
+    } else {
+      Serial.print("falhou rc="); Serial.print(mqtt.state());
+      Serial.println(". 3s...");
+      delay(3000);
+    }
+  }
+}
+
+void publicarDados() {
+  float kp, ki, kd;
+  pidCon.getAllGains(&kp, &ki, &kd);
+  String p = "{";
+  p += "\"ldr1_raw\":"   + String(leftLDR_raw,  4) + ",";
+  p += "\"ldr2_raw\":"   + String(leftLDR_mean,  4) + ",";
+  p += "\"ldr1_mean\":"  + String(rightLDR_raw, 4) + ",";
+  p += "\"ldr2_mean\":"  + String(rightLDR_mean, 4) + ",";
+  p += "\"pid_error\":"  + String(leftE - rightE, 4) + ",";
+  p += "\"pid_output\":" + String(PID_output)   + ",";
+  p += "\"pwm_value\":"  + String(PID_output)   + ",";
+  p += "\"kp\":"         + String(kp, 4)        + ",";
+  p += "\"ki\":"         + String(ki, 4)        + ",";
+  p += "\"kd\":"         + String(kd, 4);
+  p += "}";
+  mqtt.publish(TOPIC_PUBLISH, p.c_str())
+    ? Serial.println("[MQTT] OK")
+    : Serial.println("[MQTT] falha");
+}
+
+// Chamado ao receber mensagem em pid/config
+// Formato: "kp=0.5,ki=0.01,kd=0.001"
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  String msg;
+  for (unsigned int i = 0; i < length; i++) msg += (char)payload[i];
+  Serial.print("[MQTT config] "); Serial.println(msg);
+
+  float new_kp = -1, new_ki = -1, new_kd = -1;
+  int pos = 0;
+  while (pos < (int)msg.length()) {
+    int eq  = msg.indexOf('=', pos);
+    int sep = msg.indexOf(',', pos);
+    if (sep == -1) sep = msg.length();
+    if (eq  == -1) break;
+    String key = msg.substring(pos, eq); key.trim();
+    float  val = msg.substring(eq + 1, sep).toFloat();
+    if (key == "kp") new_kp = val;
+    if (key == "ki") new_ki = val;
+    if (key == "kd") new_kd = val;
+    pos = sep + 1;
+  }
+
+  float kp, ki, kd;
+  pidCon.getAllGains(&kp, &ki, &kd);
+  pidCon.setAllGains(
+    new_kp >= 0 ? new_kp : kp,
+    new_ki >= 0 ? new_ki : ki,
+    new_kd >= 0 ? new_kd : kd
+  );
+  Serial.println("[PID] ganhos atualizados");
+}
+
 void setup() {
     Serial.begin(9600);
 
@@ -108,6 +180,8 @@ void setup() {
     XTABLE_LDR
     #undef X
     #undef X2
+    
+    pinMode(SOLAR_PIN, INPUT);
 
     #if USE_ACCELEROMETER
         Adafruit_MPU6050 mpuSensor;
@@ -131,6 +205,12 @@ void setup() {
         
     #if USE_WIFI
         conectarWiFi();
+        #if USE_MQTT
+            mqtt.setServer(MQTT_BROKER, MQTT_PORT);
+            mqtt.setCallback(mqttCallback);
+            mqtt.setBufferSize(512);
+            conectarMQTT();
+        #endif
     #endif
 }
 
@@ -161,7 +241,7 @@ void loop(){
         input2 = (analogReadMilliVolts(INPUT2_PIN) - 142) / (3165.0 - 142.0);
         input3 = (analogReadMilliVolts(INPUT3_PIN) - 142) / (3165.0 - 142.0);
 
-        pidCon.setAllGains(input1 * GAIN_MULT, input2 * GAIN_MULT, input3 * GAIN_MULT);
+        pidCon.setAllGains(input1 * P_GAIN_MULT, input2 * I_GAIN_MULT, input3 * D_GAIN_MULT);
     #endif
 
     // Imprime a entrada do potenciômetro
@@ -200,12 +280,16 @@ void loop(){
     XTABLE_LDR
     #undef X
     #undef X2
+    
+    solarPanel_ms.addSample(analogReadMilliVolts(SOLAR_PIN));
+    
     if(esp_timer_get_time() > nextControllTime_us){
         nextControllTime_us += PID_CONTROLL_DELAY * 1000;
         leftE = rightE = 0.0f;
         #define X2 X
         #define X(LDR_pin, LDR_number, LDR_raw, LDR_ms, LDR_norm, LDR_mean, LDR_E, total_E) \
-            LDR_E = LDR_norm.toIlluminance(LDR_ms.getAverage());  \
+            LDR_mean = LDR_ms.getAverage(); \
+            LDR_E = LDR_norm.toIlluminance(LDR_mean);  \
             total_E += LDR_E; \
             LDR_ms.reset();
         XTABLE_LDR
@@ -214,7 +298,11 @@ void loop(){
         PID_output = pidCon.update();
         
         #if USE_WIFI
-            enviarDados();
+            #if USE_MQTT
+                publicarDados();
+            #else
+                enviarDados();
+            #endif
         #endif
     }
     

@@ -10,6 +10,9 @@
     // Pino do servo
     #define MOTOR_OUT          25     // Pino da saída para o servomotor
 
+    // Pino da placa solar
+    #define SOLAR_PIN          34
+    
     // Pinos de entrada de configuração
     #define INPUT1_PIN         32
     #define INPUT2_PIN         33
@@ -31,14 +34,23 @@
 
     // ----------------------- Configurações do wifi ------------------------
     #define USE_WIFI           1      // 1 para enviar dados para o servidor
-
-    const char* ssid     = "pi-dashboard";   // rede criada pelo Raspberry Pi (AP)
-    const char* password = "dashboard123";
+    
+    const char* WIFI_SSID     = "ssid";
+    const char* WIFI_PASSWORD = "password";
+    
+    #define USE_MQTT           0
+    
+    const char* MQTT_BROKER   = "192.168.4.1";
+    const int   MQTT_PORT     = 1883;
+    const char* MQTT_CLIENT   = "esp32-pid";
+    
     const char* serverIP = "http://192.168.4.1:5000/dados";
 
-    // ----------------------- Configurações do condicionamento de sinais ----------------
-    #define MOVING_AVERAGE_SAMPLES 5  // (int) Quantidade de amostras para a média móvel
+    // --------------------------- TÓPICOS ---------------------------------------
+    const char* TOPIC_PUBLISH = "pid/dados";   // ESP32 → broker → Flask
+    const char* TOPIC_CONFIG  = "pid/config";  // Flask → broker → ESP32
 
+    // ----------------------- Configurações do condicionamento de sinais ----------------
     // ......................... Valores do normalizador de LDR ....................
     // ................ NÃO MUDAR SEM MOTIVO .......................................
     #define LDR1_ALPHA           1 / -0.615932450836737f    // (float) Parâmetro alpha do LDR1
@@ -72,11 +84,12 @@
     #define CHANGE_PID_GAIN        1          // 1 para mudar os ganhos do PID
 
         // ........................... Ajuste dos parâmetros do controlador PID ............................
-        #define GAIN_TYPE              0             // Ganho a ser modificado. 0 para Kp, 1 para Ki e 2 para Kd
-        #define GAIN_MULT              0.5f          // Multiplicador do ganho na entrada
+        #define P_GAIN_MULT              0.5f           // Multiplicador do ganho proporcinal 
+        #define I_GAIN_MULT              0.2f           // Multiplicador do ganho integral 
+        #define D_GAIN_MULT              0.05f          // Multiplicador do ganho diferencial 
 
     // --------------------------- Configurações do acelerômetro ---------------------------------------
-    #define USE_ACCELEROMETER      1           // 1 para usar o acelerômetro
+    #define USE_ACCELEROMETER      0           // 1 para usar o acelerômetro
     #define ACCEL_PARALLEL_AXIS    x           // ({x|y|z}{Neg|Pos}) Eixo do acelerômetro // ao plano e perp. ao eixo de rotação
     #define ACCEL_NORMAL_AXIS      z           // ({x|y|z}{Neg|Pos}) Eixo do acelerômetro normal ao plano
     #define MAXIMUM_ANGLE          30          // Ângulo máximo em cada sentido, em graus
