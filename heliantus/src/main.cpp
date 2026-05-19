@@ -14,7 +14,7 @@
 
 /* Settings header */
 #include "projectSettings.h"
-
+#include "wifiDefines.h"
 
 // definições para o programa
 #define X2 X
@@ -34,6 +34,7 @@ MultisampleManager solarPanel_ms;
 float leftE, rightE;                     // Iluminância dos LDRs
 long PID_output;                         // saída do PID
 long long nextControllTime_us = PID_CONTROLL_DELAY * 1000;
+long long nextSendTime_us     = WIFI_SEND_DELAY * 1000;
 
 Servo motor;
 #if CHANGE_PID_GAIN
@@ -59,112 +60,56 @@ PubSubClient mqtt(wifiClient);
 
 void conectarWiFi() {
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    Serial.print("Conectando ao AP do Pi");
+    #if PRINT_DEBUG
+        Serial.print("Conectando ao wi-fi");
+    #endif
     int tentativas = 0;
     while (WiFi.status() != WL_CONNECTED && tentativas < 20) {
         delay(500);
-        Serial.print(".");
+        #if PRINT_DEBUG
+            Serial.print(".");
+        #endif
         tentativas++;
     }
-    if (WiFi.status() == WL_CONNECTED) {
-        Serial.println("\nWi-Fi conectado! IP: " + WiFi.localIP().toString());
-    } else {
-        Serial.println("\nFalha no Wi-Fi — continuando sem envio de dados.");
-    }
+    #if PRINT_DEBUG
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.println("\nWi-Fi conectado! IP: " + WiFi.localIP().toString());
+        } else {
+            Serial.println("\nFalha no Wi-Fi — continuando sem envio de dados.");
+        }
+    #endif
 }
 
 void enviarDados() {
     if (WiFi.status() != WL_CONNECTED) return;
 
     // JSON com todos os dados do sistema
+
     String payload = "{";
-    payload += "\"ldr1_raw\":"          + String(leftLDR_raw / 1000.0f,  4)    + ",";
-    payload += "\"ldr2_raw\":"          + String(rightLDR_raw / 1000.0f, 4)    + ",";
-    payload += "\"ldr1_mean\":"         + String(leftLDR_ms.getAverage(),  4)    + ",";
-    payload += "\"ldr2_mean\":"         + String(rightLDR_ms.getAverage(), 4)    + ",";
-    payload += "\"ldr1_illuminance\":"  + String(leftE,   4)                   + ",";
-    payload += "\"ldr2_illuminance\":"  + String(rightE,  4)                   + ",";
-    payload += "\"erro\":"              + String(leftE - rightE,  4)           + ",";
-    payload += "\"pid_output\":"        + String(PID_output)                   + ",";
-    payload += "\"pwm_pct\":"           + String( (PID_output - PWM_CENTER) / (UPPER_CLAMP - LOWER_CLAMP) * 2 * 100 , 2);
+    payload += "\"solar_v\":"    + String(solarPanel_ms.getAverage() * 2,   3) + ",";
+    payload += "\"solar_a\":"    + String(solarPanel_ms.getAverage() / .1,   3) + ",";
+    payload += "\"ldr1_raw\":"   + String(leftLDR_raw / 1000.0f,  4) + ",";
+    payload += "\"ldr2_raw\":"   + String(rightLDR_raw / 1000.0f,  4) + ",";
+    payload += "\"ldr1_mean\":"  + String(leftLDR_ms.getAverage(), 4) + ",";
+    payload += "\"ldr2_mean\":"  + String(rightLDR_ms.getAverage(), 4) + ",";
+    payload += "\"pid_error\":"  + String(leftE - rightE, 4) + ",";
+    payload += "\"pid_output\":" + String(PID_output)   + ",";
+    payload += "\"pwm_value\":"  + String(PID_output);
     payload += "}";
 
     HTTPClient http;
-    http.begin(serverIP);
+    http.begin(SERVER_URL);
     http.addHeader("Content-Type", "application/json");
+    //http.setTimeout(3000);  // 3s timeout — evita travar o loop
     int code = http.POST(payload);
-
-    if (code != 200) {
-        Serial.print("[HTTP] erro: ");
-        Serial.println(code);
-    }
+    
+    #if PRINT_DEBUG
+        if (code != 200) {
+            Serial.print("[HTTP] erro: ");
+            Serial.println(code);
+        }
+    #endif
     http.end();
-}
-
-void conectarMQTT() {
-  while (!mqtt.connected()) {
-    Serial.print("MQTT...");
-    if (mqtt.connect(MQTT_CLIENT)) {
-      Serial.println("OK");
-      mqtt.subscribe(TOPIC_CONFIG);
-    } else {
-      Serial.print("falhou rc="); Serial.print(mqtt.state());
-      Serial.println(". 3s...");
-      delay(3000);
-    }
-  }
-}
-
-void publicarDados() {
-  float kp, ki, kd;
-  pidCon.getAllGains(&kp, &ki, &kd);
-  String p = "{";
-  p += "\"ldr1_raw\":"   + String(leftLDR_raw,  4) + ",";
-  p += "\"ldr2_raw\":"   + String(leftLDR_mean,  4) + ",";
-  p += "\"ldr1_mean\":"  + String(rightLDR_raw, 4) + ",";
-  p += "\"ldr2_mean\":"  + String(rightLDR_mean, 4) + ",";
-  p += "\"pid_error\":"  + String(leftE - rightE, 4) + ",";
-  p += "\"pid_output\":" + String(PID_output)   + ",";
-  p += "\"pwm_value\":"  + String(PID_output)   + ",";
-  p += "\"kp\":"         + String(kp, 4)        + ",";
-  p += "\"ki\":"         + String(ki, 4)        + ",";
-  p += "\"kd\":"         + String(kd, 4);
-  p += "}";
-  mqtt.publish(TOPIC_PUBLISH, p.c_str())
-    ? Serial.println("[MQTT] OK")
-    : Serial.println("[MQTT] falha");
-}
-
-// Chamado ao receber mensagem em pid/config
-// Formato: "kp=0.5,ki=0.01,kd=0.001"
-void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  String msg;
-  for (unsigned int i = 0; i < length; i++) msg += (char)payload[i];
-  Serial.print("[MQTT config] "); Serial.println(msg);
-
-  float new_kp = -1, new_ki = -1, new_kd = -1;
-  int pos = 0;
-  while (pos < (int)msg.length()) {
-    int eq  = msg.indexOf('=', pos);
-    int sep = msg.indexOf(',', pos);
-    if (sep == -1) sep = msg.length();
-    if (eq  == -1) break;
-    String key = msg.substring(pos, eq); key.trim();
-    float  val = msg.substring(eq + 1, sep).toFloat();
-    if (key == "kp") new_kp = val;
-    if (key == "ki") new_ki = val;
-    if (key == "kd") new_kd = val;
-    pos = sep + 1;
-  }
-
-  float kp, ki, kd;
-  pidCon.getAllGains(&kp, &ki, &kd);
-  pidCon.setAllGains(
-    new_kp >= 0 ? new_kp : kp,
-    new_ki >= 0 ? new_ki : ki,
-    new_kd >= 0 ? new_kd : kd
-  );
-  Serial.println("[PID] ganhos atualizados");
 }
 
 void setup() {
@@ -205,12 +150,6 @@ void setup() {
         
     #if USE_WIFI
         conectarWiFi();
-        #if USE_MQTT
-            mqtt.setServer(MQTT_BROKER, MQTT_PORT);
-            mqtt.setCallback(mqttCallback);
-            mqtt.setBufferSize(512);
-            conectarMQTT();
-        #endif
     #endif
 }
 
@@ -281,17 +220,25 @@ void loop(){
     #undef X
     #undef X2
     
-    solarPanel_ms.addSample(analogReadMilliVolts(SOLAR_PIN));
+    solarPanel_ms.addSample(analogReadMilliVolts(SOLAR_PIN) / 1000.0);
     
     #if PRINT_SYSTEM_IO
         #if USE_ACCELEROMETER
-            Serial.printf("theta = %f° ", planeAngle_rad * RAD_TO_DEG);
+            Serial.printf("theta = %4.1f° ", planeAngle_rad * RAD_TO_DEG);
         #endif
         Serial.printf("raw = (%4d, %4d)  ms = (%5.2f, %5.2f)  E = (%7.0f, %7.0f)  ln(E) = (%5.2f, %5.2f) -> %d / sol = %5.2f",
             leftLDR_raw, rightLDR_raw,
             leftLDR_ms.getAverage(), rightLDR_ms.getAverage(), 
             leftE, rightE,
             logf(leftE), logf(rightE), PID_output, solarPanel_ms.getAverage());
+    #endif
+    
+    #if USE_WIFI
+        if(esp_timer_get_time() > nextControllTime_us){
+            nextSendTime_us += WIFI_SEND_DELAY * 1000;
+            enviarDados();
+            solarPanel_ms.reset();
+        }
     #endif
     
     if(esp_timer_get_time() > nextControllTime_us){
@@ -307,23 +254,15 @@ void loop(){
         #undef X
         #undef X2
         PID_output = pidCon.update();
-        //solarPanel_ms.reset();
-        
-        #if USE_WIFI
-            #if USE_MQTT
-                publicarDados();
-            #else
-                enviarDados();
-            #endif
-        #endif
     }
     
     #if ENABLE_HALT
-        if(running)
-            motor.write(PID_output);
-        else
-            motor.write(1500);
+    if(running)
+    motor.write(PID_output);
+    else
+    motor.write(1500);
     #endif
-    
-    Serial.println();
+    #if PRINT_INPUT_INFO | PRINT_PID_GAINS  | PRINT_SYSTEM_IO  | PRINT_DEBUG 
+        Serial.println();
+    #endif
 }

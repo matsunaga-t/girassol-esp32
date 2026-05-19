@@ -33,22 +33,9 @@
         #define RIGHT_LDR2         3
 
     // ----------------------- Configurações do wifi ------------------------
-    #define USE_WIFI           0      // 1 para enviar dados para o servidor
+    #define USE_WIFI           1      // 1 para enviar dados para o servidor
     
-    const char* WIFI_SSID     = "pi-dashboard";
-    const char* WIFI_PASSWORD = "Abacates123*";
-    
-    #define USE_MQTT           0
-    
-    const char* MQTT_BROKER   = "192.168.4.1";
-    const int   MQTT_PORT     = 1883;
-    const char* MQTT_CLIENT   = "esp32-pid";
-    
-    const char* serverIP = "http://192.168.4.1:5000/dados";
-
-    // --------------------------- TÓPICOS ---------------------------------------
-    const char* TOPIC_PUBLISH = "pid/dados";   // ESP32 → broker → Flask
-    const char* TOPIC_CONFIG  = "pid/config";  // Flask → broker → ESP32
+    #define WIFI_SEND_DELAY    5    // Intervalo para enviar dados para o servidor, em ms
 
     // ----------------------- Configurações do condicionamento de sinais ----------------
     // ......................... Valores do normalizador de LDR ....................
@@ -65,7 +52,7 @@
 
     // ----------------------- Configurações de controle ----------------------
     #define CONTROLL_MOTOR     1      // 1 para controlar o servomotor (enviar saída PWM)
-    #define ENABLE_HALT        1      // 1 para permitir a parada do controle
+    #define ENABLE_HALT        0      // 1 para permitir a parada do controle
 
     // ......................... Ajuste do PWM .................................
     #define PWM_FREQUENCY        50         // (int) Frequência do PWM
@@ -81,7 +68,7 @@
     #define I_GAIN               0//.0975   // (float) Ganho integral do PID
     #define D_GAIN               0//.185    // (float) Ganho diferencial do PID
 
-    #define CHANGE_PID_GAIN        1          // 1 para mudar os ganhos do PID
+    #define CHANGE_PID_GAIN        0          // 1 para mudar os ganhos do PID
 
         // ........................... Ajuste dos parâmetros do controlador PID ............................
         #define P_GAIN_MULT              0.5f           // Multiplicador do ganho proporcinal 
@@ -99,9 +86,10 @@
     #define X_ACCEL_OFFSET           0.0         // Offset da aceleração do eixo X
             
     // --------------------- Configurações de impressão ----------------------------
-    #define PRINT_INPUT_INFO 1    // Imprime informação da entrada dos potenciometros
-    #define PRINT_PID_GAINS  1    // Imprime os ganhos do controlador PID
-    #define PRINT_SYSTEM_IO  1    // Imprime a entrada e saída do sistema
+    #define PRINT_INPUT_INFO 0    // Imprime informação da entrada dos potenciometros
+    #define PRINT_PID_GAINS  0    // Imprime os ganhos do controlador PID
+    #define PRINT_SYSTEM_IO  0    // Imprime a entrada e saída do sistema
+    #define PRINT_DEBUG      0    // Imprime os valores de depuração
 
 // ==================== MAIS MACROS PARA AJUDAR =====================================
 // ==================== NÃO MUDAR SEM MOTIVO ============================
