@@ -6,11 +6,11 @@
 #include "controlTheory.h"
 #include <HTTPClient.h>
 #include <WiFi.h>
-#include <PubSubClient.h>
 
 /* Third party libraries */
 #include <ESP32Servo.h>
 #include <Adafruit_MPU6050.h>
+#include <PubSubClient.h>
 
 /* Settings header */
 #include "projectSettings.h"
@@ -48,6 +48,7 @@ Servo motor;
     
 #if USE_ACCELEROMETER
     Adafruit_Sensor *mpuAccelSensor;
+    Adafruit_MPU6050 mpuSensor;
     float planeAngle_rad;
 #endif
 
@@ -184,7 +185,6 @@ void setup() {
     pinMode(SOLAR_PIN, INPUT);
 
     #if USE_ACCELEROMETER
-        Adafruit_MPU6050 mpuSensor;
         if (!mpuSensor.begin()) {
             Serial.println("Não foi possível encontrar o MPU6050. Verifique as conexões!");
             while (1);
