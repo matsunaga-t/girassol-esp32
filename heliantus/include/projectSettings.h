@@ -33,10 +33,10 @@
         #define RIGHT_LDR2         3
 
     // ----------------------- Configurações do wifi ------------------------
-    #define USE_WIFI           1      // 1 para enviar dados para o servidor
+    #define USE_WIFI           0      // 1 para enviar dados para o servidor
     
-    const char* WIFI_SSID     = "ssid";
-    const char* WIFI_PASSWORD = "password";
+    const char* WIFI_SSID     = "pi-dashboard";
+    const char* WIFI_PASSWORD = "Abacates123*";
     
     #define USE_MQTT           0
     
@@ -89,10 +89,10 @@
         #define D_GAIN_MULT              0.05f          // Multiplicador do ganho diferencial 
 
     // --------------------------- Configurações do acelerômetro ---------------------------------------
-    #define USE_ACCELEROMETER      0           // 1 para usar o acelerômetro
-    #define ACCEL_PARALLEL_AXIS    x           // ({x|y|z}{Neg|Pos}) Eixo do acelerômetro // ao plano e perp. ao eixo de rotação
-    #define ACCEL_NORMAL_AXIS      z           // ({x|y|z}{Neg|Pos}) Eixo do acelerômetro normal ao plano
-    #define MAXIMUM_ANGLE          30          // Ângulo máximo em cada sentido, em graus
+    #define USE_ACCELEROMETER      1           // 1 para usar o acelerômetro
+    #define ACCEL_PARALLEL_AXIS    y * -1           // ({x|y|z}[* -1]) Eixo do acelerômetro // ao plano e perp. ao eixo de rotação
+    #define ACCEL_NORMAL_AXIS      x           // ({x|y|z}[* -1]) Eixo do acelerômetro normal ao plano
+    #define MAXIMUM_ANGLE          60          // Ângulo máximo em cada sentido, em graus
 
     // ............................. Limites do acelerõmetro ................................
     #define X_ACCEL_RANGE            2.0         // Faixa de aceleração do eixo X

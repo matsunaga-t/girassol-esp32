@@ -167,7 +167,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 }
 
 void setup() {
-    Serial.begin(9600);
+    Serial.begin(115200);
 
     #if CONTROLL_MOTOR
         motor.attach(MOTOR_OUT, LOWER_CLAMP, UPPER_CLAMP);
@@ -283,6 +283,17 @@ void loop(){
     
     solarPanel_ms.addSample(analogReadMilliVolts(SOLAR_PIN));
     
+    #if PRINT_SYSTEM_IO
+        #if USE_ACCELEROMETER
+            Serial.printf("theta = %f° ", planeAngle_rad * RAD_TO_DEG);
+        #endif
+        Serial.printf("raw = (%4d, %4d)  ms = (%5.2f, %5.2f)  E = (%7.0f, %7.0f)  ln(E) = (%5.2f, %5.2f) -> %d / sol = %5.2f",
+            leftLDR_raw, rightLDR_raw,
+            leftLDR_ms.getAverage(), rightLDR_ms.getAverage(), 
+            leftE, rightE,
+            logf(leftE), logf(rightE), PID_output, solarPanel_ms.getAverage());
+    #endif
+    
     if(esp_timer_get_time() > nextControllTime_us){
         nextControllTime_us += PID_CONTROLL_DELAY * 1000;
         leftE = rightE = 0.0f;
@@ -296,6 +307,7 @@ void loop(){
         #undef X
         #undef X2
         PID_output = pidCon.update();
+        //solarPanel_ms.reset();
         
         #if USE_WIFI
             #if USE_MQTT
@@ -311,17 +323,6 @@ void loop(){
             motor.write(PID_output);
         else
             motor.write(1500);
-    #endif
-
-    #if PRINT_SYSTEM_IO
-        #if USE_ACCELEROMETER
-            Serial.printf("theta = %f° ", planeAngle_rad * RAD_TO_DEG);
-        #endif
-        Serial.printf("raw = (%4d, %4d)  ma = (%5.2f, %5.2f)  E = (%7.0f, %7.0f)  ln(E) = (%5.2f, %5.2f) -> %d",
-            leftLDR_raw, rightLDR_raw,
-            leftLDR_ms.getAverage(), rightLDR_ms.getAverage(), 
-            leftE, rightE,
-            logf(leftE), logf(rightE), PID_output);
     #endif
     
     Serial.println();

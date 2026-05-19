@@ -40,6 +40,7 @@ float MovingAverage::justUpdate(float input){
 
 void MultisampleManager::addSample(float value){
     this->sum += value;
+    this->samples++;
 }
 
 float MultisampleManager::getAverage(){
