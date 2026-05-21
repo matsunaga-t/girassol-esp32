@@ -87,7 +87,7 @@ void enviarDados() {
 
     String payload = "{";
     payload += "\"solar_v\":"    + String(solarPanel_ms.getAverage() * 2,   3) + ",";
-    payload += "\"solar_a\":"    + String(solarPanel_ms.getAverage() / .1,   3) + ",";
+    payload += "\"solar_a\":"    + String(solarPanel_ms.getAverage() / 100,   3) + ",";
     payload += "\"ldr1_raw\":"   + String(leftLDR_raw / 1000.0f,  4) + ",";
     payload += "\"ldr2_raw\":"   + String(rightLDR_raw / 1000.0f,  4) + ",";
     payload += "\"ldr1_mean\":"  + String(leftLDR_ms.getAverage(), 4) + ",";
@@ -128,10 +128,13 @@ void setup() {
     #undef X2
     
     pinMode(SOLAR_PIN, INPUT);
+    pinMode(LED_BUILTIN, OUTPUT);
+    digitalWrite(LED_BUILTIN, 0);
 
     #if USE_ACCELEROMETER
         if (!mpuSensor.begin()) {
             Serial.println("Não foi possível encontrar o MPU6050. Verifique as conexões!");
+            digitalWrite(LED_BUILTIN, 1);
             while (1);
         }
         mpuSensor.setAccelerometerRange(MPU6050_RANGE_2_G);
@@ -156,7 +159,11 @@ void setup() {
 void loop(){
     #if USE_ACCELEROMETER
         sensors_event_t accelarationEvent;
-        mpuAccelSensor->getEvent(&accelarationEvent);
+        sensors_event_t gyroEvent;
+        sensors_event_t tempEvent;
+        //mpuAccelSensor->getEvent(&accelarationEvent);
+        mpuSensor.getEvent(&accelarationEvent, &gyroEvent, &tempEvent);
+        Serial.printf("%f, %f, %f\n", accelarationEvent.acceleration.x, accelarationEvent.acceleration.y, accelarationEvent.acceleration.z);
         planeAngle_rad = atan2f(accelarationEvent.acceleration.ACCEL_PARALLEL_AXIS, accelarationEvent.acceleration.ACCEL_NORMAL_AXIS);
         float pwmChange = planeAngle_rad / (MAXIMUM_ANGLE * DEG_TO_RAD);
         if(pwmChange > 0) {
@@ -167,7 +174,7 @@ void loop(){
         else if(pwmChange < 0) {
             if(pwmChange < -1)
                 pwmChange = -1;
-            pidCon.setLimits(LOWER_CLAMP - pwmChange * (LOWER_CLAMP - PWM_CENTER), UPPER_CLAMP);
+            pidCon.setLimits(LOWER_CLAMP + pwmChange * (LOWER_CLAMP - PWM_CENTER), UPPER_CLAMP);
         }
     #endif
     
@@ -257,11 +264,14 @@ void loop(){
     }
     
     #if ENABLE_HALT
-    if(running)
-    motor.write(PID_output);
-    else
-    motor.write(1500);
+        if(running)
+            motor.write(PID_output);
+        else
+            motor.write(1500);
+    #else
+        motor.write(PID_output);
     #endif
+    
     #if PRINT_INPUT_INFO | PRINT_PID_GAINS  | PRINT_SYSTEM_IO  | PRINT_DEBUG 
         Serial.println();
     #endif

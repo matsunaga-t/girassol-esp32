@@ -35,7 +35,7 @@
     // ----------------------- Configurações do wifi ------------------------
     #define USE_WIFI           1      // 1 para enviar dados para o servidor
     
-    #define WIFI_SEND_DELAY    5    // Intervalo para enviar dados para o servidor, em ms
+    #define WIFI_SEND_DELAY    500    // Intervalo para enviar dados para o servidor, em ms
 
     // ----------------------- Configurações do condicionamento de sinais ----------------
     // ......................... Valores do normalizador de LDR ....................
@@ -88,8 +88,8 @@
     // --------------------- Configurações de impressão ----------------------------
     #define PRINT_INPUT_INFO 0    // Imprime informação da entrada dos potenciometros
     #define PRINT_PID_GAINS  0    // Imprime os ganhos do controlador PID
-    #define PRINT_SYSTEM_IO  0    // Imprime a entrada e saída do sistema
-    #define PRINT_DEBUG      0    // Imprime os valores de depuração
+    #define PRINT_SYSTEM_IO  1    // Imprime a entrada e saída do sistema
+    #define PRINT_DEBUG      1    // Imprime os valores de depuração
 
 // ==================== MAIS MACROS PARA AJUDAR =====================================
 // ==================== NÃO MUDAR SEM MOTIVO ============================
