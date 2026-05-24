@@ -415,10 +415,10 @@
 
 <script>
 const GRID='#1e1e1e', TICK='#555', MONO="'IBM Plex Mono',monospace";
-const MAX_POINTS = 60;
+const MAX_POINTS = 300;
 const MAX_PWM    = (1 << 20) - 1;
-const V_MAX      = 25.0;   // tensão máxima esperada do painel (V)
-const A_MAX      = 10.0;   // corrente máxima esperada (A)
+const V_MAX      = 6.6;   // tensão máxima esperada do painel (V)
+const A_MAX      = 0.05;   // corrente máxima esperada (A)
 
 let swPeak = 0;
 let buffer = [];

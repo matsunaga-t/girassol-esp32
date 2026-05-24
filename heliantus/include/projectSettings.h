@@ -1,5 +1,5 @@
 // ======================= DEFINIÇÃO DOS PINOS  ==============
-// ============ NÃO MUDAR SEM MOTIVO ========================
+// ============ NÃO MUDAR SEM MOTIVO =========================
     // Pinos dos LDRs
     #define LEFT_LDR_PIN       36     /* Pino do LDR esquerdo */
     #define RIGHT_LDR_PIN      39     /* Pino do LDR direito */
@@ -38,52 +38,48 @@
     #define WIFI_SEND_DELAY    500    // Intervalo para enviar dados para o servidor, em ms
 
     // ----------------------- Configurações do condicionamento de sinais ----------------
-    // ......................... Valores do normalizador de LDR ....................
-    // ................ NÃO MUDAR SEM MOTIVO .......................................
-    #define LDR1_ALPHA           1 / -0.615932450836737f    // (float) Parâmetro alpha do LDR1
-    #define LDR2_ALPHA           1 / -0.570998772975310f    // (float) Parâmetro alpha do LDR2
-    #define LDR3_ALPHA           1 / -0.578058151321358f    // (float) Parâmetro alpha do LDR3
-    #define LDR4_ALPHA           1 / -0.552624264297261f    // (float) Parâmetro alpha do LDR4
-
-    #define LDR1_BETA            powf((320) / expf(11.3373904862202f), LDR1_ALPHA)  // (float) Parâmetro beta do LDR1
-    #define LDR2_BETA            powf((320) / expf(10.9327655047729f), LDR2_ALPHA)  // (float) Parâmetro beta do LDR2
-    #define LDR3_BETA            powf((320) / expf(11.2481036463693f), LDR3_ALPHA)  // (float) Parâmetro beta do LDR3
-    #define LDR4_BETA            powf((320) / expf(10.6852316542604f), LDR4_ALPHA)  // (float) Parâmetro beta do LDR4
+        // ......................... Valores do normalizador de LDR ....................
+        // ................ NÃO MUDAR SEM MOTIVO .......................................
+        #define LDR1_ALPHA           1 / -0.615932450836737f    // (float) Parâmetro alpha do LDR1
+        #define LDR2_ALPHA           1 / -0.570998772975310f    // (float) Parâmetro alpha do LDR2
+        #define LDR3_ALPHA           1 / -0.578058151321358f    // (float) Parâmetro alpha do LDR3
+        #define LDR4_ALPHA           1 / -0.552624264297261f    // (float) Parâmetro alpha do LDR4
+        
+        #define LDR1_BETA            powf((320) / expf(11.3373904862202f), LDR1_ALPHA)  // (float) Parâmetro beta do LDR1
+        #define LDR2_BETA            powf((320) / expf(10.9327655047729f), LDR2_ALPHA)  // (float) Parâmetro beta do LDR2
+        #define LDR3_BETA            powf((320) / expf(11.2481036463693f), LDR3_ALPHA)  // (float) Parâmetro beta do LDR3
+        #define LDR4_BETA            powf((320) / expf(10.6852316542604f), LDR4_ALPHA)  // (float) Parâmetro beta do LDR4
 
     // ----------------------- Configurações de controle ----------------------
     #define CONTROLL_MOTOR     1      // 1 para controlar o servomotor (enviar saída PWM)
     #define ENABLE_HALT        0      // 1 para permitir a parada do controle
 
-    // ......................... Ajuste do PWM .................................
-    #define PWM_FREQUENCY        50         // (int) Frequência do PWM
-    #define PWM_RESOLUTION       20         // (int) Resolução do PWM
-    #define LOWER_CLAMP          1000       // (int) Limite inferior da saída PWM
-    #define UPPER_CLAMP          2000       // (int) Limite superior da saída PWM
-    #define PWM_CENTER           1500       // (int) Valor central do PWM 
+        // ......................... Ajuste do PWM .................................
+        #define PWM_FREQUENCY        50         // (int) Frequência do PWM
+        #define PWM_RESOLUTION       20         // (int) Resolução do PWM
+        #define LOWER_CLAMP          1000       // (int) Limite inferior da saída PWM
+        #define UPPER_CLAMP          2000       // (int) Limite superior da saída PWM
+        #define PWM_CENTER           1500       // (int) Valor central do PWM 
 
-    // ......................... Ajuste do controlador PID ..............................................
-    #define PID_CONTROLL_DELAY   10         // (int) Intervalo de tempo, em ms, entre atualizações no PID
+        // ......................... Ajuste do controlador PID ..............................................
+        #define PID_CONTROLL_DELAY   10         // (int) Intervalo de tempo, em ms, entre atualizações no PID
 
-    #define P_GAIN               0.120      // (float) Ganho proporcional do PID
-    #define I_GAIN               0//.0975   // (float) Ganho integral do PID
-    #define D_GAIN               0//.185    // (float) Ganho diferencial do PID
+        #define P_GAIN               0.120      // (float) Ganho proporcional do PID
+        #define I_GAIN               0          // (float) Ganho integral do PID
+        #define D_GAIN               0          // (float) Ganho diferencial do PID
 
-    #define CHANGE_PID_GAIN        0          // 1 para mudar os ganhos do PID
+        #define CHANGE_PID_GAIN        0          // 1 para mudar os ganhos do PID
 
-        // ........................... Ajuste dos parâmetros do controlador PID ............................
-        #define P_GAIN_MULT              0.5f           // Multiplicador do ganho proporcinal 
-        #define I_GAIN_MULT              0.2f           // Multiplicador do ganho integral 
-        #define D_GAIN_MULT              0.05f          // Multiplicador do ganho diferencial 
+            // ........................... Ajuste dos parâmetros do controlador PID ............................
+            #define P_GAIN_MULT              0.5f           // Multiplicador do ganho proporcinal 
+            #define I_GAIN_MULT              0.2f           // Multiplicador do ganho integral 
+            #define D_GAIN_MULT              0.05f          // Multiplicador do ganho diferencial 
 
     // --------------------------- Configurações do acelerômetro ---------------------------------------
     #define USE_ACCELEROMETER      1           // 1 para usar o acelerômetro
     #define ACCEL_PARALLEL_AXIS    y * -1           // ({x|y|z}[* -1]) Eixo do acelerômetro // ao plano e perp. ao eixo de rotação
     #define ACCEL_NORMAL_AXIS      x           // ({x|y|z}[* -1]) Eixo do acelerômetro normal ao plano
-    #define MAXIMUM_ANGLE          60          // Ângulo máximo em cada sentido, em graus
-
-    // ............................. Limites do acelerõmetro ................................
-    #define X_ACCEL_RANGE            2.0         // Faixa de aceleração do eixo X
-    #define X_ACCEL_OFFSET           0.0         // Offset da aceleração do eixo X
+    #define MAXIMUM_ANGLE          45          // Ângulo máximo em cada sentido, em graus
             
     // --------------------- Configurações de impressão ----------------------------
     #define PRINT_INPUT_INFO 0    // Imprime informação da entrada dos potenciometros

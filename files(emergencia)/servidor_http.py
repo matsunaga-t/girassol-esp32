@@ -95,7 +95,7 @@ def historico():
         SELECT solar_v, solar_a,
                ldr1_raw, ldr2_raw, ldr1_mean, ldr2_mean,
                pid_error, pid_output, pwm_value, timestamp
-        FROM leituras ORDER BY id DESC LIMIT 100
+        FROM leituras ORDER BY id DESC LIMIT 300
     """)
     rows = cursor.fetchall()
     conn.close()
